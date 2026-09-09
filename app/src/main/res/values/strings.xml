@@ -1,0 +1,34 @@
+<resources>
+    <string name="app_name">CarLink</string>
+
+    <!-- Accessibility Service strings -->
+    <string name="accessibility_service_label">CarLink Voice Assistant</string>
+    <string name="accessibility_service_description">CarLink uses Accessibility Service to automatically skip YouTube ads, enabling a hands-free driving experience.</string>
+
+    <!-- Notification strings -->
+    <string name="notification_channel_id">carlink_voice_channel</string>
+    <string name="notification_channel_name">CarLink Voice Assistant</string>
+    <string name="notification_title">CarLink Assistant</string>
+    <string name="notification_text_idle">Listening for \"GUNNU\"…</string>
+    <string name="notification_text_listening">🎤 Listening for your command…</string>
+    <string name="notification_text_processing">Processing…</string>
+
+    <!-- UI strings -->
+    <string name="service_start">Start Voice Assistant</string>
+    <string name="service_stop">Stop Voice Assistant</string>
+    <string name="settings_title">Settings</string>
+    <string name="settings_access_key">Picovoice Access Key</string>
+    <string name="settings_access_key_hint">Paste your AccessKey from console.picovoice.ai</string>
+    <string name="settings_wake_word">Wake Word</string>
+    <string name="settings_auto_play">Auto-play first search result</string>
+    <string name="settings_auto_skip_ads">Auto-skip YouTube ads</string>
+    <string name="settings_steering_key">Steering wheel trigger key</string>
+    <string name="status_idle">💤 Idle — Say \"GUNNU\" to start</string>
+    <string name="status_listening">🎤 Listening for your command…</string>
+    <string name="status_processing">⏳ Processing…</string>
+    <string name="status_launching">🚀 Launching YouTube…</string>
+    <string name="permission_mic_rationale">Microphone access is required for wake word detection and voice search.</string>
+    <string name="enable_accessibility">Enable Accessibility Service</string>
+    <string name="accessibility_not_enabled">⚠️ Accessibility Service not enabled — ad skipping disabled</string>
+    <string name="accessibility_enabled">✅ Accessibility Service active — ads will be auto-skipped</string>
+</resources>

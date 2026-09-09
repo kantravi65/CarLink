@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Accessibility Service configuration for CarLink.
+  Monitors YouTube for "Skip Ad" buttons and auto-clicks them.
+  Also used to detect window state changes to coordinate voice overlay.
+-->
+<accessibility-service
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowContentChanged|typeWindowStateChanged|typeViewClicked|typeViewScrolled"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagRetrieveInteractiveWindows|flagReportViewIds|flagRequestFilterKeyEvents"
+    android:canRetrieveWindowContent="true"
+    android:canPerformGestures="true"
+    android:canRequestFilterKeyEvents="true"
+    android:description="@string/accessibility_service_description"
+    android:notificationTimeout="100" />
