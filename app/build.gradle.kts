@@ -72,4 +72,8 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
+
+    // Fix for Jetifier namespace clash with AppUpdater
+    implementation("androidx.vectordrawable:vectordrawable:1.1.0")
+    implementation("androidx.vectordrawable:vectordrawable-animated:1.1.0")
 }
