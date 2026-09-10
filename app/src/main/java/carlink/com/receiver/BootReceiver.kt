@@ -69,34 +69,29 @@ class BootReceiver : BroadcastReceiver() {
         try {
             // Check if we have the WRITE_SECURE_SETTINGS permission
             if (context.checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                
-                // Get current enabled services
-                var enabledServices = android.provider.Settings.Secure.getString(
-                    context.contentResolver, 
-                    android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-                ) ?: ""
+                val am = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? android.view.accessibility.AccessibilityManager
+                val isBound = am?.getEnabledAccessibilityServiceList(android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+                    ?.any { it.resolveInfo?.serviceInfo?.packageName == context.packageName } == true
 
-                // Append ours if it's not already there
-                if (!enabledServices.contains(serviceString)) {
-                    if (enabledServices.isNotEmpty()) {
-                        enabledServices += ":"
-                    }
-                    enabledServices += serviceString
-                    
+                if (!isBound) {
+                    // Force Android to re-bind by clearing and re-setting
                     android.provider.Settings.Secure.putString(
                         context.contentResolver,
                         android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
-                        enabledServices
+                        ""
                     )
-                    Log.i(TAG, "Self-healed: Added CarLink to enabled accessibility services.")
+                    android.provider.Settings.Secure.putString(
+                        context.contentResolver,
+                        android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+                        serviceString
+                    )
+                    android.provider.Settings.Secure.putString(
+                        context.contentResolver,
+                        android.provider.Settings.Secure.ACCESSIBILITY_ENABLED,
+                        "1"
+                    )
+                    Log.i(TAG, "Self-healed: Toggled CarLink in enabled accessibility services.")
                 }
-
-                // Make sure accessibility is toggled ON globally
-                android.provider.Settings.Secure.putString(
-                    context.contentResolver,
-                    android.provider.Settings.Secure.ACCESSIBILITY_ENABLED,
-                    "1"
-                )
             } else {
                 Log.w(TAG, "Cannot auto-enable accessibility: WRITE_SECURE_SETTINGS not granted via ADB.")
             }

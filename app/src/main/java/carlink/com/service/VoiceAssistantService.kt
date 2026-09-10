@@ -154,7 +154,15 @@ class VoiceAssistantService : Service() {
     private fun initializeComponents() {
         val s = settings ?: return
         initializeMediaSession(s.steeringKeyCode)
-        loadVoskModelAndStartListening()
+        if (s.serviceEnabled) {
+            loadVoskModelAndStartListening()
+        } else {
+            Log.i(TAG, "VoiceAssistantService in steering/keep-alive mode (Vosk offline hotword disabled, mic free)")
+            stopAudioCapture()
+            releaseVosk()
+            updateNotification(STATUS_IDLE)
+            broadcastStatus(STATUS_IDLE)
+        }
     }
 
     // ─── Vosk Wake Word Engine ─────────────────────────────────────────────
@@ -384,7 +392,24 @@ class VoiceAssistantService : Service() {
                         Log.d(TAG, "Media key received: keyCode=${event.keyCode}")
                         if (event.keyCode == steeringKeyCode) {
                             Log.i(TAG, "Steering voice button pressed (keyCode=$steeringKeyCode)")
-                            scope.launch(Dispatchers.Main) { onWakeWordDetected() }
+
+                            // 1. Release any background audio capture so the mic is 100% free for YouTube
+                            stopAudioCapture()
+
+                            // 2. Bring YouTube to front if not already frontmost
+                            val ytIntent = packageManager.getLaunchIntentForPackage("com.google.android.youtube")?.apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                            }
+                            if (ytIntent != null) {
+                                try {
+                                    startActivity(ytIntent)
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Failed to launch YouTube: ${e.message}")
+                                }
+                            }
+
+                            // 3. Request Accessibility service to click YouTube's native voice search mic
+                            CarLinkAccessibilityService.requestMicActivation()
                             return true
                         }
                     }

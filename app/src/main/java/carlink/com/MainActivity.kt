@@ -40,6 +40,44 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: CarLinkViewModel by viewModels()
 
+    override fun onResume() {
+        super.onResume()
+        // Self-heal accessibility if the car reboot blocked the BootReceiver
+        tryAutoEnableAccessibility()
+    }
+
+    private fun tryAutoEnableAccessibility() {
+        val serviceString = "carlink.com/carlink.com.service.CarLinkAccessibilityService"
+        try {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_SECURE_SETTINGS) == PackageManager.PERMISSION_GRANTED) {
+                val am = getSystemService(android.content.Context.ACCESSIBILITY_SERVICE) as? android.view.accessibility.AccessibilityManager
+                val isBound = am?.getEnabledAccessibilityServiceList(android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+                    ?.any { it.resolveInfo?.serviceInfo?.packageName == packageName } == true
+
+                if (!isBound) {
+                    // Force Android to rebind by toggling
+                    android.provider.Settings.Secure.putString(
+                        contentResolver,
+                        android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+                        ""
+                    )
+                    android.provider.Settings.Secure.putString(
+                        contentResolver,
+                        android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+                        serviceString
+                    )
+                    android.provider.Settings.Secure.putString(
+                        contentResolver,
+                        android.provider.Settings.Secure.ACCESSIBILITY_ENABLED,
+                        "1"
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 

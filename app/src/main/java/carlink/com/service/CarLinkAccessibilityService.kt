@@ -70,8 +70,21 @@ class CarLinkAccessibilityService : AccessibilityService() {
         "No thanks"
     )
 
+    companion object {
+        private const val TAG = "CarLinkA11y"
+        @Volatile var instance: CarLinkAccessibilityService? = null
+        @Volatile var pendingMicActivation = false
+
+        fun requestMicActivation() {
+            Log.i(TAG, "Steering button requested mic activation")
+            pendingMicActivation = true
+            instance?.activateMicNow()
+        }
+    }
+
     override fun onServiceConnected() {
         super.onServiceConnected()
+        instance = this
         Log.i(TAG, "CarLink Accessibility Service connected")
 
         // Programmatically reinforce the configuration (belt-and-suspenders)
@@ -103,6 +116,13 @@ class CarLinkAccessibilityService : AccessibilityService() {
         scope.launch(Dispatchers.Main) {
             val root = rootInActiveWindow ?: return@launch
             try {
+                // If steering button requested mic activation, do it immediately
+                if (pendingMicActivation) {
+                    if (activateMicNow(root)) {
+                        pendingMicActivation = false
+                    }
+                }
+
                 // 1. Check for Skip Ad buttons
                 if (now - lastSkipAttemptMs >= skipCooldownMs) {
                     if (trySkipAd(root)) {
@@ -176,8 +196,83 @@ class CarLinkAccessibilityService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        instance = null
         scope.cancel()
         super.onDestroy()
+    }
+
+    /**
+     * Finds and activates YouTube's voice search mic on screen.
+     * If the search bar isn't open yet, clicks the search icon to reveal it.
+     */
+    fun activateMicNow(providedRoot: AccessibilityNodeInfo? = null): Boolean {
+        val root = providedRoot ?: rootInActiveWindow ?: return false
+
+        // 1. Check if the voice search mic button is directly visible
+        val micIds = listOf(
+            "com.google.android.youtube:id/voice_search",
+            "com.google.android.youtube:id/menu_search_voice",
+            "com.google.android.youtube:id/voice_search_button"
+        )
+        for (id in micIds) {
+            val nodes = root.findAccessibilityNodeInfosByViewId(id)
+            for (node in nodes) {
+                if (node.isVisibleToUser && node.isEnabled) {
+                    if (clickNodeOrParent(node)) {
+                        Log.i(TAG, "Steering voice trigger: Clicked YouTube voice search mic by ID $id")
+                        val nowMs = System.currentTimeMillis()
+                        lastMicAutoClickMs = nowMs
+                        waitingForSearchResults = true
+                        voiceSearchInitiatedMs = nowMs
+                        pendingMicActivation = false
+                        return true
+                    }
+                }
+            }
+        }
+
+        // 2. Check by text/content description for Voice Search
+        val descKeywords = listOf("voice", "mic", "बोलकर", "आवाज़")
+        for (keyword in descKeywords) {
+            val textNodes = root.findAccessibilityNodeInfosByText(keyword)
+            for (node in textNodes) {
+                val desc = node.contentDescription?.toString()?.lowercase() ?: ""
+                val text = node.text?.toString()?.lowercase() ?: ""
+                if ((desc.contains("voice") || desc.contains("आवाज़") || text.contains("voice")) &&
+                    node.isVisibleToUser && node.isEnabled
+                ) {
+                    if (clickNodeOrParent(node)) {
+                        Log.i(TAG, "Steering voice trigger: Clicked YouTube voice search mic by desc/text")
+                        val nowMs = System.currentTimeMillis()
+                        lastMicAutoClickMs = nowMs
+                        waitingForSearchResults = true
+                        voiceSearchInitiatedMs = nowMs
+                        pendingMicActivation = false
+                        return true
+                    }
+                }
+            }
+        }
+
+        // 3. If mic is not yet visible, click the search icon to open the search bar
+        val searchIds = listOf(
+            "com.google.android.youtube:id/menu_search",
+            "com.google.android.youtube:id/search"
+        )
+        for (id in searchIds) {
+            val nodes = root.findAccessibilityNodeInfosByViewId(id)
+            for (node in nodes) {
+                if (node.isVisibleToUser && node.isEnabled) {
+                    if (clickNodeOrParent(node)) {
+                        Log.i(TAG, "Steering voice trigger: Clicked YouTube search icon to open search bar")
+                        lastMicAutoClickMs = 0L // Allow immediate mic click once search bar opens
+                        return true
+                    }
+                }
+            }
+        }
+
+        return false
     }
 
     // ─── Ad Detection & Clicking ─────────────────────────────────────────
