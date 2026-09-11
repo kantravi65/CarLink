@@ -54,7 +54,11 @@ class MainActivity : ComponentActivity() {
                 val isBound = am?.getEnabledAccessibilityServiceList(android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
                     ?.any { it.resolveInfo?.serviceInfo?.packageName == packageName } == true
 
-                if (!isBound) {
+                val a11yGlobal = try {
+                    android.provider.Settings.Secure.getInt(contentResolver, android.provider.Settings.Secure.ACCESSIBILITY_ENABLED)
+                } catch (e: Exception) { 0 }
+
+                if (!isBound || a11yGlobal != 1) {
                     // Force Android to rebind by toggling
                     android.provider.Settings.Secure.putString(
                         contentResolver,
@@ -80,15 +84,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // Check for app updates from GitHub Releases
-        AppUpdater(this)
-            .setUpdateFrom(UpdateFrom.GITHUB)
-            .setGitHubUserAndRepo("kantravi65", "CarLink")
-            .setDisplay(Display.DIALOG)
-            .start()
-
-        enableEdgeToEdge()
+        
         setContent {
             CarLinkTheme {
                 Surface(
@@ -105,41 +101,6 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun CarLinkApp(viewModel: CarLinkViewModel) {
     val navController = rememberNavController()
-
-    // Note: App no longer requests RECORD_AUDIO as Vosk is removed.
-    
-    // Auto-Start whitelist instruction
-    var showAutoStartNotice by remember { mutableStateOf(true) }
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) {}
-
-    LaunchedEffect(Unit) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val ctx = navController.context
-            if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            }
-        }
-    }
-
-    if (showAutoStartNotice) {
-        AlertDialog(
-            onDismissRequest = { showAutoStartNotice = false },
-            title = { Text("Important: Background Execution") },
-            text = {
-                Text(
-                    "To ensure steering wheel controls work automatically after the car reboots, " +
-                    "please open your car's 'Auto Start' or 'Background App' manager settings " +
-                    "and explicitly allow CarLink to run in the background."
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { showAutoStartNotice = false }) { Text("Got it") }
-            }
-        )
-    }
 
     // Navigation graph
     NavHost(

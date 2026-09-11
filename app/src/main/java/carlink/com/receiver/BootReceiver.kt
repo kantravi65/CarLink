@@ -25,32 +25,20 @@ private const val TAG = "BootReceiver"
 class BootReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        val action = intent.action
-        if (action != Intent.ACTION_BOOT_COMPLETED && action != Intent.ACTION_MY_PACKAGE_REPLACED) {
-            return
-        }
+        val action = intent.action ?: return
+        Log.i(TAG, "Boot/wake event received ($action) — initializing CarLink background services")
 
-        Log.i(TAG, "Boot/update event received ($action) — checking if service should start")
-
-        // Read the persisted "service enabled" setting before starting
+        // Run self-heal and start background service
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val settings = SettingsRepository(context).settings.first()
-                
-                // If auto-skip is desired, try to forcefully re-enable accessibility service
-                if (settings.autoSkipAds) {
-                    tryAutoEnableAccessibility(context)
-                }
+                // 1. Ensure accessibility service is auto-enabled and bound
+                tryAutoEnableAccessibility(context)
 
-                // ALWAYS start VoiceAssistantService! Even if the offline voice engine is disabled,
-                // the service must run its Foreground Notification to act as an immortal Keep-Alive.
-                // This prevents the car's memory manager from killing the Accessibility Service
-                // when the user swipes the app away from the recent apps menu.
+                // 2. Start VoiceAssistantService for keep-alive and steering media keys
                 Log.i(TAG, "Starting VoiceAssistantService to ensure background keep-alive!")
                 startVoiceService(context)
             } catch (e: Exception) {
-                Log.e(TAG, "Error reading settings on boot: ${e.message}")
-                // If settings can't be read, don't start (safe default)
+                Log.e(TAG, "Error on boot startup: ${e.message}")
             }
         }
     }
@@ -73,7 +61,11 @@ class BootReceiver : BroadcastReceiver() {
                 val isBound = am?.getEnabledAccessibilityServiceList(android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
                     ?.any { it.resolveInfo?.serviceInfo?.packageName == context.packageName } == true
 
-                if (!isBound) {
+                val a11yGlobal = try {
+                    android.provider.Settings.Secure.getInt(context.contentResolver, android.provider.Settings.Secure.ACCESSIBILITY_ENABLED)
+                } catch (e: Exception) { 0 }
+
+                if (!isBound || a11yGlobal != 1) {
                     // Force Android to re-bind by clearing and re-setting
                     android.provider.Settings.Secure.putString(
                         context.contentResolver,
@@ -90,13 +82,13 @@ class BootReceiver : BroadcastReceiver() {
                         android.provider.Settings.Secure.ACCESSIBILITY_ENABLED,
                         "1"
                     )
-                    Log.i(TAG, "Self-healed: Toggled CarLink in enabled accessibility services.")
+                    Log.i(TAG, "Self-healed: Enabled and bound CarLink accessibility service.")
                 }
             } else {
                 Log.w(TAG, "Cannot auto-enable accessibility: WRITE_SECURE_SETTINGS not granted via ADB.")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to auto-enable accessibility: \${e.message}")
+            Log.e(TAG, "Failed to auto-enable accessibility: ${e.message}")
         }
     }
 }

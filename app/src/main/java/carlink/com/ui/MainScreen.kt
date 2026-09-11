@@ -223,7 +223,19 @@ private fun StatusCard(
  * Check if the CarLink Accessibility Service is currently enabled.
  */
 fun isAccessibilityEnabled(context: Context): Boolean {
-    val am = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
-    val enabledServices = am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
-    return enabledServices.any { it.resolveInfo.serviceInfo.packageName == context.packageName }
+    val am = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager
+    val isBound = am?.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+        ?.any { it.resolveInfo?.serviceInfo?.packageName == context.packageName } == true
+    if (isBound) return true
+
+    val enabledServices = android.provider.Settings.Secure.getString(
+        context.contentResolver,
+        android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+    ) ?: ""
+    val isGlobalEnabled = android.provider.Settings.Secure.getInt(
+        context.contentResolver,
+        android.provider.Settings.Secure.ACCESSIBILITY_ENABLED,
+        0
+    ) == 1
+    return isGlobalEnabled && enabledServices.contains(context.packageName)
 }
