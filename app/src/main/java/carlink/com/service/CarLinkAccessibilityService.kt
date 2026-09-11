@@ -3,8 +3,10 @@ package carlink.com.service
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.accessibilityservice.GestureDescription
+import android.content.Intent
 import android.graphics.Path
 import android.graphics.Rect
+import android.os.Build
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -97,6 +99,19 @@ class CarLinkAccessibilityService : AccessibilityService() {
                     AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or 
                     AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
         }
+
+        // Ensure VoiceAssistantService is active for steering wheel key capture & keep-alive
+        try {
+            val serviceIntent = Intent(this, VoiceAssistantService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent)
+            } else {
+                startService(serviceIntent)
+            }
+            Log.i(TAG, "VoiceAssistantService started from onServiceConnected")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start VoiceAssistantService from onServiceConnected: ${e.message}")
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -187,7 +202,7 @@ class CarLinkAccessibilityService : AccessibilityService() {
                 // 3. Auto-play first search result if waiting
                 if (waitingForSearchResults) {
                     val elapsed = now - voiceSearchInitiatedMs
-                    if (elapsed in 2000L..45000L) {
+                    if (elapsed in 1200L..45000L) {
                         // Ensure the listening overlay has finished before clicking
                         if (!isVoiceOverlayActive(root)) {
                             if (tryAutoPlayFirstVideo(root)) {
@@ -421,56 +436,168 @@ class CarLinkAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Dispatches a physical gesture tap to the top-left quadrant of the node on the screen.
-     * This avoids dead zones like timestamp badges (bottom-right) and 3-dot menus (right edge).
-     */
-    /**
      * Finds and automatically plays the first video in the YouTube search results.
+     * When a video is already playing, we strictly target the search results RecyclerView
+     * and ignore the active video player / miniplayer.
      */
     private fun tryAutoPlayFirstVideo(root: AccessibilityNodeInfo): Boolean {
-        // Strategy 1: Find by "play video" in content-description (verified on this head unit)
+        // Strategy 1: Look inside the results RecyclerView (com.google.android.youtube:id/results)
+        val resultsViews = root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/results")
+        for (resultsView in resultsViews) {
+            if (!resultsView.isVisibleToUser) continue
+            val target = findBestVideoCardInResults(resultsView)
+            if (target != null) {
+                val bounds = Rect()
+                target.getBoundsInScreen(bounds)
+                Log.i(TAG, "Found target video card in results RecyclerView: bounds=$bounds, desc=${target.contentDescription}")
+                if (clickNodeOrParent(target)) {
+                    Log.i(TAG, "Auto-clicked FIRST search result video in results RecyclerView!")
+                    return true
+                }
+            }
+        }
+
+        // Strategy 2: Fallback - Search for "play video" content-description,
+        // BUT strictly filter out the active player and miniplayer!
         val playVideoNodes = mutableListOf<AccessibilityNodeInfo>()
         collectPlayVideoNodes(root, playVideoNodes)
         for (node in playVideoNodes) {
-            if (node.isVisibleToUser) {
-                Log.i(TAG, "Found video result via 'play video' content-desc: ${node.contentDescription}")
-                if (clickNodeOrParent(node)) {
-                    Log.i(TAG, "Auto-clicked FIRST search result video!")
-                    return true
-                }
+            if (!node.isVisibleToUser) continue
+            if (isInsidePlayerOrMiniplayer(node)) {
+                Log.d(TAG, "Skipping 'play video' node belonging to active player/miniplayer")
+                continue
+            }
+            val bounds = Rect()
+            node.getBoundsInScreen(bounds)
+            if (bounds.height() < 90 || bounds.width() < 250) {
+                continue // Skip thin dividers / non-card elements
+            }
+
+            Log.i(TAG, "Found video result via fallback 'play video' content-desc: ${node.contentDescription}")
+            if (clickNodeOrParent(node)) {
+                Log.i(TAG, "Auto-clicked video result via fallback!")
+                return true
             }
         }
 
-        // Strategy 2: Look inside the results RecyclerView
-        val resultsViews = root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/results")
-        for (resultsView in resultsViews) {
-            if (resultsView.childCount > 0) {
-                for (i in 0 until resultsView.childCount) {
-                    val child = resultsView.getChild(i) ?: continue
-                    if (child.isVisibleToUser) {
-                        val target = findFirstClickable(child) ?: child
-                        Log.i(TAG, "Found video result in results RecyclerView")
-                        if (clickNodeOrParent(target)) {
-                            Log.i(TAG, "Auto-clicked FIRST video item in RecyclerView!")
-                            return true
-                        }
-                    }
-                }
+        return false
+    }
+
+    private fun findBestVideoCardInResults(resultsView: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val childCount = resultsView.childCount
+        if (childCount == 0) return null
+
+        var bestCandidate: AccessibilityNodeInfo? = null
+        var bestScore = -1
+
+        for (i in 0 until childCount) {
+            val child = resultsView.getChild(i) ?: continue
+            if (!child.isVisibleToUser) continue
+
+            val bounds = Rect()
+            child.getBoundsInScreen(bounds)
+
+            // Must have reasonable card dimensions (exclude divider lines / zero-height views)
+            if (bounds.height() < 90 || bounds.width() < 250) {
+                continue
+            }
+
+            // Exclude filter chip bars (horizontal lists with "All", "Watched", etc.)
+            if (isFilterChipBar(child)) {
+                continue
+            }
+
+            var score = 0
+            val desc = child.contentDescription?.toString()?.lowercase() ?: ""
+            val text = child.text?.toString()?.lowercase() ?: ""
+
+            // Check if this card contains "play video" in its tree
+            val playNodes = mutableListOf<AccessibilityNodeInfo>()
+            collectPlayVideoNodes(child, playNodes)
+            val hasPlayVideo = playNodes.any { 
+                val b = Rect()
+                it.getBoundsInScreen(b)
+                it.isVisibleToUser && b.height() >= 80
+            }
+
+            // Check if this card has thumbnail or title
+            val hasThumbnail = child.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/thumbnail").any { it.isVisibleToUser }
+            val hasTitle = child.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/title").any { it.isVisibleToUser }
+
+            val isShorts = desc.contains("shorts") || text.contains("shorts") ||
+                    (child.viewIdResourceName?.contains("shorts", ignoreCase = true) == true)
+
+            val isSponsored = desc.contains("sponsored") || text.contains("sponsored") ||
+                    (child.viewIdResourceName?.contains("ad_badge", ignoreCase = true) == true) ||
+                    (child.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/ad_badge").isNotEmpty())
+
+            if (hasPlayVideo) score += 50
+            if (hasThumbnail) score += 30
+            if (hasTitle) score += 20
+            if (isShorts) score -= 40
+            if (isSponsored) score -= 30
+
+            if (score > bestScore) {
+                bestScore = score
+                // Determine the best node to click inside this card:
+                // 1) The play video node if found
+                // 2) The thumbnail if found
+                // 3) First clickable node or the card itself
+                val targetToClick = playNodes.firstOrNull { it.isVisibleToUser }
+                    ?: child.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/thumbnail").firstOrNull { it.isVisibleToUser }
+                    ?: findFirstClickable(child)
+                    ?: child
+
+                bestCandidate = targetToClick
+            }
+
+            // If we found a high confidence video card (score >= 50), take the first one (top search result!)
+            if (bestScore >= 50) {
+                break
             }
         }
 
-        // Strategy 3: Check classic YouTube IDs
-        val classicNodes = root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/title") +
-                root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/thumbnail")
-        for (node in classicNodes) {
-            if (node.isVisibleToUser) {
-                if (clickNodeOrParent(node)) {
-                    Log.i(TAG, "Auto-clicked video result via classic ID!")
-                    return true
-                }
-            }
+        return bestCandidate
+    }
+
+    private fun isFilterChipBar(node: AccessibilityNodeInfo): Boolean {
+        val id = node.viewIdResourceName?.lowercase() ?: ""
+        if (id.contains("chip") || id.contains("filter")) return true
+
+        val bounds = Rect()
+        node.getBoundsInScreen(bounds)
+        if (bounds.height() < 90) return true
+
+        // Check if it contains chip text like "All"
+        val allChips = node.findAccessibilityNodeInfosByText("All")
+        if (allChips.any { it.isVisibleToUser } && bounds.height() < 120) {
+            return true
+        }
+        return false
+    }
+
+    private fun isInsidePlayerOrMiniplayer(node: AccessibilityNodeInfo): Boolean {
+        val bounds = Rect()
+        node.getBoundsInScreen(bounds)
+
+        // Miniplayer is typically docked at the bottom of the screen (e.g. bottom > 550 on 720p)
+        val screenHeight = resources.displayMetrics.heightPixels
+        if (screenHeight > 0 && bounds.bottom >= screenHeight - 20 && bounds.height() in 1..220) {
+            return true
         }
 
+        var curr: AccessibilityNodeInfo? = node
+        var depth = 0
+        while (curr != null && depth < 8) {
+            val id = curr.viewIdResourceName?.lowercase() ?: ""
+            if (id.contains("player") || id.contains("watch_while") || 
+                id.contains("miniplayer") || id.contains("controls_layout") ||
+                id.contains("bottom_player")) {
+                return true
+            }
+            curr = curr.parent
+            depth++
+        }
         return false
     }
 
@@ -515,10 +642,10 @@ class CarLinkAccessibilityService : AccessibilityService() {
 
         val x: Float
         val y: Float
-        if (bounds.width() > 600) {
+        if (bounds.width() > 500 && bounds.height() > 80) {
             // Full-width video card in search results -> tap thumbnail area (left side)
-            x = (bounds.left + minOf(220, bounds.width() / 2)).toFloat()
-            y = (bounds.top + (bounds.height() * 0.35f)).toFloat()
+            x = (bounds.left + minOf(180, bounds.width() / 3)).toFloat()
+            y = (bounds.top + (bounds.height() * 0.4f)).toFloat()
         } else {
             // Normal buttons (Skip Ad, Mic, Search) -> tap the exact center!
             x = bounds.centerX().toFloat()

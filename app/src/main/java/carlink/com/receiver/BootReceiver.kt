@@ -24,31 +24,70 @@ private const val TAG = "BootReceiver"
  */
 class BootReceiver : BroadcastReceiver() {
 
+    companion object {
+        @Volatile private var lastBootLaunchMs = 0L
+    }
+
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action ?: return
-        Log.i(TAG, "Boot/wake event received ($action) — initializing CarLink background services")
+        Log.i(TAG, "Boot/wake event received ($action) — initializing CarLink")
 
-        // Run self-heal and start background service
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                // 1. Ensure accessibility service is auto-enabled and bound
-                tryAutoEnableAccessibility(context)
+        // 1. Synchronously auto-enable and bind Accessibility Service (<5ms IPC)
+        tryAutoEnableAccessibility(context)
 
-                // 2. Start VoiceAssistantService for keep-alive and steering media keys
-                Log.i(TAG, "Starting VoiceAssistantService to ensure background keep-alive!")
-                startVoiceService(context)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error on boot startup: ${e.message}")
+        // 2. Start VoiceAssistantService for keep-alive and steering media keys
+        startVoiceService(context)
+
+        // 3. Immediately launch MainActivity so the app opens automatically
+        val now = System.currentTimeMillis()
+        if (now - lastBootLaunchMs > 4_000L) {
+            lastBootLaunchMs = now
+            launchMainActivity(context)
+
+            // 4. Use goAsync() to schedule a secondary launch after 2.5s
+            // In case the car launcher takes a few moments to finish its boot animation
+            val pendingResult = goAsync()
+            CoroutineScope(Dispatchers.Main).launch {
+                try {
+                    kotlinx.coroutines.delay(2500)
+                    launchMainActivity(context)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error in delayed boot launch: ${e.message}")
+                } finally {
+                    pendingResult.finish()
+                }
             }
         }
     }
 
+    private fun launchMainActivity(context: Context) {
+        try {
+            val appIntent = Intent(context, carlink.com.MainActivity::class.java).apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                )
+            }
+            context.startActivity(appIntent)
+            Log.i(TAG, "MainActivity launched successfully on boot")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to launch MainActivity on boot: ${e.message}")
+        }
+    }
+
     private fun startVoiceService(context: Context) {
-        val serviceIntent = Intent(context, VoiceAssistantService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(serviceIntent)
-        } else {
-            context.startService(serviceIntent)
+        try {
+            val serviceIntent = Intent(context, VoiceAssistantService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent)
+            } else {
+                context.startService(serviceIntent)
+            }
+            Log.i(TAG, "VoiceAssistantService started on boot")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start VoiceAssistantService on boot: ${e.message}")
         }
     }
 

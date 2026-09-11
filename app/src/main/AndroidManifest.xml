@@ -22,6 +22,10 @@
     <!-- Internet access (for Android SpeechRecognizer STT and YouTube) -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Overlay & Background Activity Launch permissions for boot auto-open -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -64,9 +68,10 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
-        <!-- Boot receiver: auto-start VoiceAssistantService on device boot -->
+        <!-- Boot receiver: auto-start VoiceAssistantService and launch MainActivity on device boot -->
         <receiver
             android:name=".receiver.BootReceiver"
+            android:directBootAware="true"
             android:exported="true">
             <intent-filter android:priority="999">
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
@@ -74,6 +79,9 @@
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.USER_PRESENT" />
+                <action android:name="android.intent.action.USER_UNLOCKED" />
+                <action android:name="carlink.com.BOOT_TEST" />
             </intent-filter>
         </receiver>
 
