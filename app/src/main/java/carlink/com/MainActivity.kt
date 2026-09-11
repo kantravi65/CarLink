@@ -106,58 +106,37 @@ class MainActivity : ComponentActivity() {
 fun CarLinkApp(viewModel: CarLinkViewModel) {
     val navController = rememberNavController()
 
-    // Permission state
-    var micPermissionGranted by remember {
-        mutableStateOf(false) // will be updated below
-    }
-    var showMicRationale by remember { mutableStateOf(false) }
-
-    // Permissions to request
-    val requiredPermissions = buildList {
-        add(Manifest.permission.RECORD_AUDIO)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            add(Manifest.permission.POST_NOTIFICATIONS)
-        }
-    }
+    // Note: App no longer requests RECORD_AUDIO as Vosk is removed.
+    
+    // Auto-Start whitelist instruction
+    var showAutoStartNotice by remember { mutableStateOf(true) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { results ->
-        micPermissionGranted = results[Manifest.permission.RECORD_AUDIO] == true
-    }
+        contract = ActivityResultContracts.RequestPermission()
+    ) {}
 
-    // Check existing permissions on first composition
     LaunchedEffect(Unit) {
-        val ctx = navController.context
-        val allGranted = requiredPermissions.all {
-            ContextCompat.checkSelfPermission(ctx, it) == PackageManager.PERMISSION_GRANTED
-        }
-        if (allGranted) {
-            micPermissionGranted = true
-        } else {
-            permissionLauncher.launch(requiredPermissions.toTypedArray())
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val ctx = navController.context
+            if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
         }
     }
 
-    // Mic permission rationale dialog
-    if (showMicRationale) {
+    if (showAutoStartNotice) {
         AlertDialog(
-            onDismissRequest = { showMicRationale = false },
-            title = { Text("Microphone Required") },
+            onDismissRequest = { showAutoStartNotice = false },
+            title = { Text("Important: Background Execution") },
             text = {
                 Text(
-                    "Microphone access is required to detect the \"GUNNU\" wake word " +
-                    "and to listen to your voice search commands."
+                    "To ensure steering wheel controls work automatically after the car reboots, " +
+                    "please open your car's 'Auto Start' or 'Background App' manager settings " +
+                    "and explicitly allow CarLink to run in the background."
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
-                    showMicRationale = false
-                    permissionLauncher.launch(requiredPermissions.toTypedArray())
-                }) { Text("Grant") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showMicRationale = false }) { Text("Cancel") }
+                TextButton(onClick = { showAutoStartNotice = false }) { Text("Got it") }
             }
         )
     }

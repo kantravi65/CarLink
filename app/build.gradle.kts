@@ -47,9 +47,6 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
 
-    // Vosk offline keyword spotting (wake word "GUNNU") — no account needed
-    implementation(libs.vosk.android)
-
     // AndroidX Media (MediaSession for steering wheel controls)
     implementation(libs.androidx.media)
 

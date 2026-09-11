@@ -2,18 +2,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Audio recording for wake word detection and speech recognition -->
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
-
     <!-- To auto-enable accessibility service on boot if manufacturer disables it -->
     <uses-permission
         android:name="android.permission.WRITE_SECURE_SETTINGS"
         tools:ignore="ProtectedPermissions" />
 
-    <!-- Needed to run VoiceAssistantService -->
     <!-- Foreground service permissions -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 
     <!-- Auto-start the service when device boots -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
@@ -50,11 +45,10 @@
             </intent-filter>
         </activity>
 
-        <!-- Foreground service: always-on wake word listener + steering key handler -->
+        <!-- Foreground service: steering key handler -->
         <service
             android:name=".service.VoiceAssistantService"
-            android:exported="false"
-            android:foregroundServiceType="microphone" />
+            android:exported="false" />
 
         <!-- Accessibility service: auto-skip YouTube ads -->
         <service

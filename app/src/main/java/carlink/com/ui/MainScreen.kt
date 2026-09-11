@@ -44,15 +44,9 @@ fun MainScreen(
 
     // Derive UI state from service status
     val isServiceRunning = settings.serviceEnabled
-    val isListening = status == VoiceAssistantService.STATUS_LISTENING
-    val isProcessing = status == VoiceAssistantService.STATUS_PROCESSING ||
-                       status == VoiceAssistantService.STATUS_LAUNCHING
-
     // Animated accent color for the status ring
     val accentColor by animateColorAsState(
         targetValue = when {
-            isListening -> Color(0xFF4CAF50)   // Green: listening
-            isProcessing -> Color(0xFFFF9800)  // Orange: processing
             isServiceRunning -> Color(0xFF2196F3) // Blue: idle/running
             else -> Color(0xFF607D8B)          // Grey: off
         },
@@ -62,7 +56,7 @@ fun MainScreen(
 
     // Pulse scale for the listening state
     val pulseScale by animateFloatAsState(
-        targetValue = if (isListening) 1.12f else 1f,
+        targetValue = 1f,
         animationSpec = tween(600),
         label = "pulse"
     )
@@ -111,12 +105,7 @@ fun MainScreen(
 
             // ── Status label ──────────────────────────────────────────────
             Text(
-                text = when (status) {
-                    VoiceAssistantService.STATUS_LISTENING -> "🎤 Listening…"
-                    VoiceAssistantService.STATUS_PROCESSING -> "⏳ Processing…"
-                    VoiceAssistantService.STATUS_LAUNCHING -> "🚀 Launching YouTube…"
-                    else -> if (isServiceRunning) "💤 Say \"GUNNU\"" else "Assistant is Off"
-                },
+                text = if (isServiceRunning) "Steering key interceptor active" else "Interceptor is Off",
                 style = MaterialTheme.typography.headlineSmall,
                 textAlign = TextAlign.Center,
                 fontWeight = FontWeight.SemiBold,
@@ -174,7 +163,7 @@ fun MainScreen(
                 // Accessibility not enabled — show ADB command (Ambrane has no Accessibility settings UI)
                 if (settings.autoSkipAds && !isA11yEnabled) {
                     StatusCard(
-                        text = "⚠️ Ad-skip not active yet.\n\nRun this ADB command once from your PC:\n\nadb shell settings put secure enabled_accessibility_services carlink.com/carlink.com.service.CarLinkAccessibilityService && adb shell settings put secure accessibility_enabled 1",
+                        text = "⚠️ Ad-skip not active yet.\n\nTo allow CarLink to auto-enable Accessibility after car reboots, run this ADB command once from your PC:\n\nadb shell pm grant carlink.com android.permission.WRITE_SECURE_SETTINGS",
                         containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                         textColor = MaterialTheme.colorScheme.onTertiaryContainer
                     )
@@ -183,7 +172,7 @@ fun MainScreen(
                 // Ready — no API key or signup needed with Vosk
                 if (!settings.autoSkipAds || isA11yEnabled) {
                     StatusCard(
-                        text = "✅ CarLink is ready! No signup needed.\nSay \"${settings.wakeWord}\" to activate",
+                        text = "✅ CarLink is ready! No signup needed.",
                         containerColor = MaterialTheme.colorScheme.primaryContainer,
                         textColor = MaterialTheme.colorScheme.onPrimaryContainer
                     )

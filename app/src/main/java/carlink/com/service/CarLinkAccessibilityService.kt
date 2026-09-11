@@ -171,8 +171,10 @@ class CarLinkAccessibilityService : AccessibilityService() {
                             
                             for (node in results) {
                                 if (node.isVisibleToUser) {
-                                    if (clickNodeOrParent(node)) {
-                                        Log.i(TAG, "Auto-clicked FIRST search result video!")
+                                    // Force a physical gesture tap because YouTube's search result views
+                                    // often have fake clickable parents that swallow Accessibility ACTION_CLICK.
+                                    if (clickGesture(node)) {
+                                        Log.i(TAG, "Auto-clicked FIRST search result video via physical gesture!")
                                         waitingForSearchResults = false
                                         break
                                     }
